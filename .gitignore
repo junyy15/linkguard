@@ -1,0 +1,53 @@
+# =====================================================================
+#  SECRETOS - lo mas importante de este archivo
+# =====================================================================
+# Si una llave entra al historial de git, sacarla despues es un dolor:
+# queda en todos los commits anteriores aunque borres el archivo.
+.env
+.env.local
+*.key
+*.pem
+secrets.json
+
+# (Las llaves de verdad viven fuera del proyecto, en
+#  C:\Users\<usuario>\.secrets\url-checker.env, que git nunca ve.)
+
+# =====================================================================
+#  Entorno virtual
+# =====================================================================
+# Miles de archivos que se reconstruyen con:
+#   python -m venv .venv
+#   pip install -r requirements.txt
+.venv/
+venv/
+env/
+
+# =====================================================================
+#  Temporales de Python
+# =====================================================================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# =====================================================================
+#  Cosas del proyecto que se regeneran solas
+# =====================================================================
+# Cache de respuestas de las APIs
+.cache/
+
+# Configuracion local de Streamlit
+.streamlit/secrets.toml
+
+# Imagenes generadas de los diagramas (el .puml es la fuente)
+docs/*.png
+docs/*.svg
+
+# =====================================================================
+#  Sistema operativo y editores
+# =====================================================================
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,7 @@
+# Librerias que solo hacen falta para DESARROLLAR el proyecto,
+# no para usarlo. Quien solo quiera correr la herramienta instala
+# requirements.txt y ya.
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+
+pytest

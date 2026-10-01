@@ -1,0 +1,86 @@
+@startuml arquitectura
+' Diagrama de componentes: quien usa a quien.
+' La regla que se ve a simple vista: las flechas van siempre hacia abajo.
+' Ningun modulo del motor conoce a las interfaces. Por eso las tres
+' interfaces pueden existir sin duplicar una sola linea de logica.
+
+title URL Health & Safety Checker — Arquitectura
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+skinparam ArrowColor #555555
+
+package "Interfaces (solo presentan)" #EEF5FF {
+  [check.py\nterminal] as CLI
+  [api.py\nHTTP + FastAPI] as API
+  [app.py\nweb + Streamlit] as WEB
+}
+
+package "Coordinacion" #F3F0FF {
+  [scanner.py\nanalizar()] as SCANNER
+  [scoring.py\nevaluar()] as SCORING
+  [reporte.py\na_diccionario()] as REPORTE
+}
+
+package "Motor" #F0FFF4 {
+  [validator.py\nModulo 0\nsintaxis + anti-SSRF] as VALIDATOR
+  [health.py\nModulo 1\nHTTP + redirecciones] as HEALTH
+  [threats.py\nModulo 2\nGoogle + VirusTotal] as THREATS
+  [heuristicas.py\nModulo 2b\nforma del engaño] as HEURISTICAS
+}
+
+package "Apoyo" #FFF9E6 {
+  [config.py\nllaves de API] as CONFIG
+  [cache.py\nrespuestas guardadas] as CACHE
+}
+
+cloud "Internet" #FAFAFA {
+  [Google Safe Browsing] as GSB
+  [VirusTotal] as VT
+  [El sitio a revisar] as SITIO
+}
+
+database "~/.secrets/\nurl-checker.env" as SECRETOS #FFF0F0
+
+' --- Las interfaces solo hablan con la coordinacion ---
+CLI --> SCANNER
+CLI --> SCORING
+CLI --> REPORTE
+API --> SCANNER
+API --> SCORING
+API --> REPORTE
+WEB --> SCANNER
+WEB --> SCORING
+
+' --- La coordinacion usa el motor ---
+SCANNER --> VALIDATOR
+SCANNER --> HEALTH
+SCANNER --> THREATS
+SCORING --> HEURISTICAS
+
+' --- Dentro del motor ---
+HEALTH --> VALIDATOR : revalida\ncada salto
+THREATS --> CONFIG
+THREATS --> CACHE
+
+' --- Salidas a internet ---
+HEALTH --> SITIO : HEAD / GET
+THREATS --> GSB
+THREATS --> VT
+CONFIG --> SECRETOS : lee
+
+note right of VALIDATOR
+  El guardia anti-SSRF.
+  health.py lo vuelve a llamar
+  en CADA redireccion: validar
+  solo la primera URL no sirve.
+end note
+
+note bottom of SECRETOS
+  Fuera del proyecto y fuera
+  de OneDrive. Nunca se imprime
+  su contenido, ni en errores.
+end note
+
+@enduml

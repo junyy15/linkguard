@@ -1,0 +1,113 @@
+@startuml decision-veredicto
+' Diagrama de actividad: el criterio completo del Modulo 3.
+' Este es el diagrama mas util del proyecto: es la regla de decision
+' entera, en una hoja, sin leer codigo.
+
+title Modulo 3 — como se decide el veredicto
+
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+
+start
+
+if (¿paso la validacion?) then (no)
+  :revisar igual la FORMA del dominio
+  (un dominio de phishing dado de baja
+  sigue siendo evidencia);
+  #FFD6D6:**RECHAZADA**;
+  stop
+endif
+
+:nivel = SEGURO
+puntos = 0;
+
+partition "Reglas DURAS — una sola basta" {
+  if (¿Google Safe Browsing lo reporta?) then (si)
+    #FFD6D6:nivel = POSIBLEMENTE_PELIGROSO;
+  endif
+  if (¿VirusTotal: 2 o mas maliciosos?) then (si)
+    #FFD6D6:nivel = POSIBLEMENTE_PELIGROSO;
+    note right
+      2 y no 1: con mas de 90 motores,
+      que uno marque algo es ruido
+      estadistico normal.
+    end note
+  endif
+}
+
+partition "Puntos — se suman" {
+  if (¿VirusTotal: exactamente 1 malicioso?) then (si)
+    :puntos += 2;
+  elseif (¿algun sospechoso?) then (si)
+    :puntos += 1;
+  endif
+
+  if (¿certificado TLS invalido?) then (si)
+    :puntos += 3;
+    note right
+      No es que "se vea mal": significa
+      que NO se pudo comprobar que el
+      sitio sea quien dice ser.
+    end note
+  endif
+
+  if (¿la cadena se corto?\n(SSRF, bucle, demasiados saltos)) then (si)
+    :puntos += 3;
+  endif
+
+  if (¿baja de https a http?) then (si)
+    :puntos += 2;
+  endif
+
+  if (¿cambia de dominio?) then (si)
+    :puntos += 1;
+  endif
+  if (¿cadena de mas de 3 saltos?) then (si)
+    :puntos += 1;
+  endif
+  if (¿el destino final no usa https?) then (si)
+    :puntos += 1;
+  endif
+}
+
+partition "Heuristicas — la forma del engaño" {
+  :punycode con alfabetos mezclados... +3
+  marca conocida en el subdominio...... +3
+  typosquatting (distancia 1-2)........ +3
+  dos o mas acortadores encadenados.... +3
+  un solo acortador.................... +1
+  muchos niveles o muchos guiones...... +1;
+  note right
+    Ninguna es regla dura: las
+    heuristicas se equivocan mas
+    que las bases de datos.
+  end note
+}
+
+if (¿puntos >= 3?) then (si)
+  #FFE9CC:nivel = max(nivel, SOSPECHOSO);
+endif
+
+partition "La regla de oro" {
+  if (¿alguna fuente no se pudo\no no se quiso consultar?) then (si)
+    :anotar la razon
+    (no suma puntos: la ignorancia
+    no es evidencia de culpa);
+    if (¿el nivel seguia en SEGURO?) then (si)
+      #FFF6CC:nivel = SIN_CONFIRMAR;
+      note right
+        No preguntar NO es estar limpio.
+        Un error de red no es una
+        constancia de limpieza.
+      end note
+    endif
+  endif
+}
+
+#D6F5D6:**Veredicto final**
+nivel + lista de razones
+(cada una con su fuente);
+
+stop
+
+@enduml

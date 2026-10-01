@@ -1,0 +1,118 @@
+@startuml modelo-de-datos
+' Diagrama de clases: los objetos que se pasan entre modulos.
+' Todos son @dataclass. Ninguno tiene logica de red: son datos.
+
+title Objetos del proyecto
+
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+skinparam classAttributeIconSize 0
+
+class Validacion <<dataclass>> {
+  +ok: bool
+  +url: str | None
+  +motivo: str | None
+  +ips: list[str]
+}
+
+class Salto <<dataclass>> {
+  +numero: int
+  +url: str
+  +codigo: int | None
+  +destino: str | None
+}
+
+class Salud <<dataclass>> {
+  +categoria: str
+  +codigo: int | None
+  +razon: str
+  +tiempo_ms: int | None
+  +destino: str | None
+  +metodo: str | None
+  +tipo_error: str | None
+}
+
+class Cadena <<dataclass>> {
+  +saltos: list[Salto]
+  +url_final: str
+  +salud_final: Salud | None
+  +problema: str | None
+  +cambia_de_dominio: bool
+  +baja_seguridad: bool
+  --
+  +num_saltos: int
+}
+
+class Amenaza <<dataclass>> {
+  +fuente: str
+  +tipo: str
+  +url: str
+  --
+  +descripcion: str
+}
+
+class ResultadoAmenazas <<dataclass>> {
+  +fuente: str
+  +consultado: bool
+  +amenazas: list[Amenaza]
+  +error: str | None
+  +estadisticas: dict
+  +del_cache: bool
+  --
+  +limpio: bool
+  +resumen: str
+}
+
+class Analisis <<dataclass>> {
+  +entrada: str
+  +validacion: Validacion
+  +cadena: Cadena | None
+  +google: ResultadoAmenazas | None
+  +virustotal: ResultadoAmenazas | None
+  +tiempo_ms: int
+}
+
+class Señal <<dataclass>> {
+  +texto: str
+  +fuente: str
+  +peso: int
+  +dura: bool
+}
+
+class Veredicto <<dataclass>> {
+  +seguridad: str
+  +salud: str
+  +señales: list[Señal]
+  +puntos: int
+  --
+  +frase: str
+  +cita_a_google: bool
+}
+
+class Hallazgo <<dataclass>> {
+  +texto: str
+  +peso: int
+}
+
+Cadena "1" *-- "muchos" Salto
+Cadena "1" *-- "0..1" Salud
+ResultadoAmenazas "1" *-- "muchas" Amenaza
+Analisis "1" *-- "1" Validacion
+Analisis "1" *-- "0..1" Cadena
+Analisis "1" *-- "0..2" ResultadoAmenazas
+Veredicto "1" *-- "muchas" Señal
+Hallazgo ..> Señal : se convierte en
+
+note right of ResultadoAmenazas
+  **limpio** exige consultado == True.
+  consultado=False + sin amenazas
+  NO es "limpio": es "no se sabe".
+end note
+
+note bottom of Veredicto
+  SEGURO < SIN_CONFIRMAR < SOSPECHOSO
+  < POSIBLEMENTE_PELIGROSO < RECHAZADA
+  Siempre se queda con el peor.
+end note
+
+@enduml

@@ -1,0 +1,11 @@
+# Normaliza los finales de linea.
+#
+# Windows termina las lineas con CRLF y Linux/Mac con LF. Sin esto, git
+# avisa en cada archivo y, peor, un companero en otro sistema veria todo
+# el archivo como "modificado" aunque no hayas tocado nada.
+#
+# text=auto -> git guarda LF en el historial y usa lo que toque en tu disco.
+* text=auto
+
+# Los .bat son de Windows y deben quedarse con CRLF.
+*.bat text eol=crlf

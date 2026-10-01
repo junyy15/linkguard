@@ -1,0 +1,31 @@
+# Lista de URLs para probar la herramienta en bloque.
+#   .\check.bat --lista urls-de-prueba.txt
+#
+# Las lineas vacias y las que empiezan con # se ignoran.
+# Agrega las tuyas al final y vuelve a correrlo.
+
+# --- Sitios que deben salir OK ---
+https://example.com
+https://www.wikipedia.org
+https://github.com
+
+# --- Redirecciones ---
+http://github.com
+http://google.com
+https://bit.ly/3xyz000
+
+# --- Enlaces rotos ---
+https://www.google.com/pagina-que-no-existe-12345
+https://github.com/esto-no-existe-98765
+
+# --- Certificados en mal estado (sitios de prueba oficiales de badssl.com) ---
+https://expired.badssl.com/
+https://self-signed.badssl.com/
+https://wrong.host.badssl.com/
+
+# --- Entradas que deben ser rechazadas por el validador ---
+javascript:alert(1)
+http://127.0.0.1/admin
+http://169.254.169.254/latest/meta-data/
+https://www.banco.com@sitio-malo.com
+http://example.com:99999

@@ -1,0 +1,8 @@
+# El motor y la linea de comandos
+httpx
+python-dotenv
+rich
+
+# La API HTTP (api.py). Si solo vas a usar check.py, no hacen falta.
+fastapi
+uvicorn

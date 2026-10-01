@@ -1,0 +1,83 @@
+@startuml flujo-analisis
+' Diagrama de secuencia: que pasa, y en que orden, cuando alguien
+' revisa una URL. Lo interesante es DONDE se puede paralelizar y
+' donde no.
+
+title analizar() — el recorrido de una URL
+
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+skinparam sequenceMessageAlign center
+
+actor Usuario
+participant "check.py / api.py\n/ app.py" as UI
+participant "scanner.py" as SCANNER
+participant "validator.py" as VAL
+participant "health.py" as HEALTH
+participant "threats.py" as THREATS
+participant "cache.py" as CACHE
+participant "scoring.py" as SCORING
+database "Internet" as NET
+
+Usuario -> UI : pega una URL
+UI -> SCANNER : analizar(url)
+activate SCANNER
+
+== 1. Validar (si falla, aqui se acaba) ==
+SCANNER -> VAL : validar_url(url)
+activate VAL
+VAL -> VAL : sintaxis y esquema
+VAL -> NET : resolver DNS
+VAL -> VAL : ¿alguna IP es interna?
+VAL --> SCANNER : Validacion(ok)
+deactivate VAL
+
+alt la URL no es valida
+  SCANNER --> UI : Analisis sin cadena\n(no se gasta ni una peticion)
+end
+
+== 2. Seguir la cadena (en orden obligado) ==
+SCANNER -> HEALTH : seguir_cadena(url)
+activate HEALTH
+loop por cada salto, maximo 10
+  HEALTH -> NET : HEAD (o GET si contesta 403/405/501)
+  NET --> HEALTH : codigo + Location
+  HEALTH -> VAL : validar_url(siguiente)
+  note right : EL GUARDIA, OTRA VEZ.\nUna cadena puede empezar\npublica y acabar en 127.0.0.1
+end
+HEALTH --> SCANNER : Cadena
+deactivate HEALTH
+
+== 3. Las dos fuentes, EN PARALELO ==
+note over SCANNER : No dependen entre si,\nasi que van en dos hilos.\n1287 ms -> 769 ms
+
+par consulta simultanea
+  SCANNER -> THREATS : consultar_safe_browsing(\n  [url original, url final])
+  THREATS -> NET : POST threatMatches:find
+  NET --> THREATS : coincidencias (o nada)
+else
+  SCANNER -> THREATS : consultar_virustotal(url final)
+  THREATS -> CACHE : ¿lo tengo guardado?
+  alt esta en cache y vigente
+    CACHE --> THREATS : respuesta guardada
+  else hay que preguntar
+    THREATS -> THREATS : limitador: 4 por minuto
+    THREATS -> NET : GET /api/v3/urls/{id}
+    NET --> THREATS : last_analysis_stats
+    THREATS -> CACHE : guardar\n(1 h si limpio, 24 h si reportado)
+  end
+end
+
+SCANNER --> UI : Analisis completo
+deactivate SCANNER
+
+== 4. Decidir ==
+UI -> SCORING : evaluar(analisis)
+activate SCORING
+SCORING -> SCORING : reglas duras + puntos\n+ heuristicas
+SCORING --> UI : Veredicto + razones
+deactivate SCORING
+
+UI --> Usuario : veredicto con sus razones
+
+@enduml
