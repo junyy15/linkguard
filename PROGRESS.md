@@ -21,7 +21,7 @@ Progreso total: 19 de 19 dias. `[####################] 100%`
 
 ## Como correr las pruebas
 
-    cd "%USERPROFILE%\OneDrive - um.edu.mx\Documentos\url-checker"
+    cd "ruta\a\url-checker"
 
     .\probar.bat                          -> TODO (43 pruebas)
     .\probar.bat --validador              -> solo el Modulo 0
@@ -106,7 +106,7 @@ Progreso total: 19 de 19 dias. `[####################] 100%`
 
 - [ ] **Dia 1 - Llaves de API**
   - [x] Archivo secreto creado FUERA de OneDrive:
-        `C:\Users\Glee51\.secrets\url-checker.env`
+        `C:\Users\<tu-usuario>\.secrets\url-checker.env`
   - [x] `checker/config.py` que lee de ahi y NUNCA imprime el valor de una llave
   - [x] `.\llaves.bat` para revisar si ya estan puestas
   - [x] Llave de Google Safe Browsing obtenida y restringida a esa sola API
@@ -223,7 +223,7 @@ estadistico normal. Dos coincidiendo ya es señal. Un antivirus solo suma
         dominio de phishing dado de baja sigue siendo evidencia
   - [x] `probar.py --heuristicas`: 15 casos, ninguno toca internet
   - [x] Prueba anti-falsos-positivos: 6 sitios legitimos comunes
-        (github, google, python.org, um.edu.mx, mercadolibre.com.mx)
+        (github, google, python.org, ejemplo.edu.mx, mercadolibre.com.mx)
         y ninguno se marca
 
 ### Limite conocido: el dominio registrable es una aproximacion
@@ -364,7 +364,7 @@ COMPLETO, de arriba a abajo. Por eso:
 | Cliente HTTP | `httpx` | Control manual de redirecciones y timeouts |
 | Interfaz final | Streamlit (Semana 4) | Interfaz web sin escribir HTML ni CSS |
 | Estructura del resultado | Dos ejes separados: Salud y Seguridad | Un enlace puede estar roto pero ser seguro, o funcionar y ser malicioso |
-| Secretos | `.env` + `python-dotenv`, fuera de OneDrive | La carpeta es de la cuenta escolar um.edu.mx |
+| Secretos | `.env` + `python-dotenv`, fuera de OneDrive | La carpeta puede estar sincronizada con una cuenta ajena |
 | Licencias de API | GSB y VirusTotal gratis = solo uso NO comercial | Si algun dia se vende, hay que pasar a Google Web Risk |
 
 ---

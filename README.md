@@ -81,7 +81,7 @@ las revisiones por visitante y muestra un aviso de privacidad.
 Primero entra a la carpeta:
 
 ```
-cd "$env:USERPROFILE\OneDrive - um.edu.mx\Documentos\url-checker"
+cd "ruta\a\url-checker"
 ```
 
 Luego, cualquiera de estos (los `.bat` no necesitan activar nada):
@@ -180,7 +180,7 @@ Cada archivo es un modulo con un solo trabajo. Este es el orden en que se usan:
 ### Las llaves de API (fuera del proyecto)
 
 ```
-C:\Users\Glee51\.secrets\url-checker.env
+C:\Users\<tu-usuario>\.secrets\url-checker.env
 ```
 
 Viven **fuera de esta carpeta** porque Documentos se sincroniza con el

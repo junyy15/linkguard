@@ -80,7 +80,7 @@ def test_un_error_interno_no_filtra_detalles(cliente, monkeypatch):
     """Un traceback en la respuesta le regala a un atacante las rutas de
     tu disco y la estructura de tu proyecto."""
     def explotar(*_args, **_kwargs):
-        raise RuntimeError("C:\\Users\\Glee51\\secreto\\ruta.py revento")
+        raise RuntimeError("C:\\Users\\alguien\\secreto\\ruta.py revento")
 
     monkeypatch.setattr(api, "analizar", explotar)
     respuesta = cliente.post("/check", json={"url": "https://example.com"})

@@ -66,7 +66,7 @@ def test_acortadores_encadenados_pesan_mas():
     "www.google.com",
     "example.com",
     "docs.python.org",
-    "um.edu.mx",
+    "ejemplo.edu.mx",
     "mercadolibre.com.mx",
     "es.wikipedia.org",
     "stackoverflow.com",

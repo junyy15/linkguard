@@ -856,7 +856,7 @@ def probar_heuristicas(detalle: bool = True) -> tuple[int, int]:
     # --- Falsos positivos: lo mas importante de una heuristica ---
     # Una heuristica que marca sitios legitimos es peor que no tenerla.
     limpios = ["github.com", "www.google.com", "example.com",
-               "docs.python.org", "um.edu.mx", "mercadolibre.com.mx"]
+               "docs.python.org", "ejemplo.edu.mx", "mercadolibre.com.mx"]
     marcados = [h for h in limpios if peso_de(h) > 0]
     anotar("Sitios legitimos comunes", "no marcar ninguno",
            not marcados, f"marcados: {marcados}" if marcados else "ninguno marcado")
