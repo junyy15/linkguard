@@ -23,6 +23,10 @@ una de cinco cosas, en palabras normales:
 
 Siempre te explica **por que** y **que hacer**.
 
+La pagina esta en **español e ingles**: el selector esta arriba a la
+izquierda. *(The page is available in Spanish and English — the selector
+is at the top left.)*
+
 Mientras lo uses, **no cierres la ventana negra** que se abre: ahi esta
 corriendo el programa. Para apagarlo, cierra esa ventana.
 
@@ -133,6 +137,7 @@ Los archivos de la carpeta `checker/` se corren con `-m`:
 | **`api.py`** | La API HTTP (FastAPI). `POST /check` devuelve el mismo JSON que `check.py --json`. Trae limitador por IP y documentacion automatica en `/docs`. |
 | **`app.py`** | La interfaz web (Streamlit). Cero logica propia: llama a `analizar()` y `evaluar()` como todo lo demas. Traduce los veredictos a lenguaje de todos los dias. |
 | **`marca.py`** | El nombre, el autor y el lema, en un solo lugar. Cambialo ahi y cambia en toda la herramienta. |
+| **`idiomas.py`** | TODOS los textos de la pagina, en español y en ingles. Agregar un idioma es copiar un bloque de ahi, no rastrear frases por el codigo. |
 | **`LinkGuard.bat`** | El lanzador de un clic: levanta la web y el servidor de enlaces, y apaga los dos al cerrarse. |
 | **`docs/`** | Cuatro diagramas en PlantUML: arquitectura, flujo, criterio del veredicto y modelo de datos. Ver `docs/README.md` para abrirlos. |
 | **`tests/`** | Las pruebas de verdad (pytest). 125 en total; 108 no tocan internet. `conftest.py` tiene las fabricas de datos falsos y las fixtures. |
