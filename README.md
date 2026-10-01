@@ -90,6 +90,7 @@ Cada archivo es un modulo con un solo trabajo. Este es el orden en que se usan:
 | **`reporte.py`** | — | Convierte el resultado a JSON. Se escribe a mano (no `asdict()`) porque el JSON es un **contrato** con quien lo consume. |
 | **`config.py`** | — | Carga las llaves de API. **Nunca imprime su valor**, solo si existen. |
 | **`cache.py`** | — | Guarda las respuestas de las APIs en disco para no gastar cuota. |
+| **`acortador.py`** | — | Genera enlaces cortos, **solo** para URLs con veredicto `SEGURO`, y los vuelve a revisar al abrirlos. |
 | **`__init__.py`** | — | Archivo vacio que le dice a Python que `checker/` es un paquete. |
 
 ### Configuracion y secretos
@@ -168,6 +169,50 @@ expone tus llaves de API a toda la red: cada peticion de un desconocido
 gasta tu cuota, y tu servidor visita las URLs que le manden. Hay un
 limitador de 10 peticiones por minuto por IP, pero eso no sustituye a
 entender lo que estas exponiendo.
+
+---
+
+## El acortador
+
+La idea con la que empezo el proyecto: **solo se acorta lo que salio limpio.**
+
+Desde la web, el boton "Generar enlace corto" aparece unicamente cuando el
+veredicto es `SEGURO`. Desde la API:
+
+```
+POST /acortar   {"url": "https://ejemplo.com"}
+GET  /r/{codigo}
+```
+
+Cuatro reglas, y ninguna es decoracion:
+
+1. **Solo se acorta lo limpio.** Ni siquiera `SIN_CONFIRMAR`: un enlace
+   corto es una recomendacion implicita, y no se recomienda lo que no se
+   pudo comprobar. Si no se puede, la respuesta explica por que (409).
+
+2. **Se vuelve a revisar al abrirlo.** Si paso mas de una hora desde la
+   ultima verificacion, se analiza otra vez antes de redirigir. Sin esto,
+   un atacante podria acortar su sitio limpio, repartir el enlace, y
+   ensuciar el sitio despues. Si el veredicto cambio, no redirige:
+   muestra una pagina de alerta explicando que paso.
+
+3. **Redireccion 307, nunca 301.** El 301 es permanente y los navegadores
+   lo guardan: la proxima vez ni pasarian por el servidor, y la
+   re-revision dejaria de ocurrir. Un acortador que revisa no puede usar
+   redirecciones permanentes.
+
+4. **El destino sale del almacen, nunca de la peticion.** Un acortador
+   que acepta `?url=...` es un **redirector abierto**, y sirve para
+   prestarle tu reputacion al sitio de otro: la victima ve tu dominio.
+
+Los codigos se generan con `secrets` (no con `random`) y usan un alfabeto
+sin caracteres confusos: nada de `0`/`O` ni `1`/`l`/`I`.
+
+Los enlaces se guardan en `.enlaces/`, que esta en el `.gitignore`. Para
+verlos: `python -m checker.acortador`.
+
+⚠️ El enlace corto **solo funciona mientras la API este corriendo**
+(`.\api.bat`): es ella la que atiende las redirecciones.
 
 ---
 

@@ -5,9 +5,11 @@
 
 ## Estado actual
 
-**LAS CUATRO SEMANAS, TERMINADAS. 150 pruebas, todas en verde.**
+**LAS CUATRO SEMANAS, TERMINADAS. 179 pruebas, todas en verde.**
 **+ Repositorio git inicializado.**
-**+ DNS rebinding tapado (ver "Mejoras despues del plan").**
+**+ DNS rebinding tapado.**
+**+ Acortador que solo acorta lo limpio: la idea original, cerrada.**
+(Todo eso en "Mejoras despues del plan", al final.)
 
 La herramienta tiene cuatro formas de usarse:
   terminal · JSON por tuberia · API HTTP · pagina web
@@ -338,8 +340,8 @@ hilos. Es un error comun: poner async porque "suena mas rapido".
   - [x] `flujo-analisis.puml` - secuencia, con lo que va en paralelo
   - [x] `decision-veredicto.puml` - el criterio completo en una hoja
   - [x] `modelo-de-datos.puml` - los objetos que se pasan entre modulos
-- [ ] Extra pendiente: boton de "acortar enlace" que solo funcione si el
-      veredicto es Seguro
+- [x] Extra: boton de "acortar enlace" que solo funciona si el veredicto
+      es Seguro (ver "Acortador" al final del archivo)
 
 **Meta de la semana: CUMPLIDA.** Alguien que no sea programador puede usarlo.
 
@@ -426,9 +428,51 @@ Sutileza: `ClienteFalso` solo implementa `stream()`. Si alguien volviera
 a usar `get()` o `head()`, las pruebas revientan. Asi tambien se vigila
 que nunca se descargue el cuerpo.
 
+## Acortador: solo se acorta lo limpio (1 de octubre de 2026)
+
+La idea con la que empezo el proyecto, ya construida: `checker/acortador.py`,
+`POST /acortar`, `GET /r/{codigo}` y el boton en la web.
+
+Se decidio construir el acortador en casa en vez de usar bit.ly: eso
+habria obligado a otra llave de API y a confiar en un tercero para el
+enlace final.
+
+### Las cuatro reglas, y por que cada una
+
+1. **Solo se acorta lo limpio.** Ni siquiera `SIN_CONFIRMAR`. Un enlace
+   corto es una recomendacion implicita, y no se recomienda lo que no se
+   pudo comprobar. La condicion vive dentro de `acortador.acortar()`, no
+   en la interfaz, para que no se pueda saltar llamando desde otro lado.
+
+2. **Se vuelve a revisar al abrirlo** (si paso mas de 1 hora). Sin esto
+   el acortador firma un cheque en blanco: el atacante acorta su sitio
+   limpio, reparte el enlace, y lo infecta despues. Si el veredicto
+   cambio, no redirige: muestra una pagina de alerta que explica que paso.
+
+3. **307 y nunca 301.** El 301 es permanente y el navegador lo guarda:
+   la proxima vez ni pasaria por el servidor y la re-revision dejaria de
+   ocurrir. Un acortador que revisa no puede usar redirecciones
+   permanentes.
+
+4. **El destino sale del almacen, nunca de la peticion.** Un acortador
+   que acepta `?url=...` es un redirector abierto, y sirve para prestarle
+   tu reputacion al sitio de otro: la victima ve tu dominio en el enlace.
+
+### Detalles
+
+- Codigos con `secrets`, no con `random`: la secuencia de `random` se
+  puede reconstruir, y con codigos adivinables cualquiera recorreria
+  todos los enlaces guardados.
+- Alfabeto sin caracteres confusos: nada de `0`/`O` ni `1`/`l`/`I`.
+- Se acorta la URL FINAL de la cadena, no la que escribio el usuario:
+  es la que de verdad se reviso, y le quita una capa de redireccion.
+- Almacen en `.enlaces/`, con candado, igual que el cache.
+- 29 pruebas nuevas (`test_acortador.py` y `test_api_acortador.py`),
+  incluidas la del enlace que se ensucia despues y la del redirector
+  abierto. **179 pruebas en total.**
+
 ## Lo que sigue pendiente
 
-- Boton de "acortar enlace" para enlaces seguros (la idea original)
 - Fuga de memoria en el limitador de `api.py`: las IPs nunca se borran
 - Cachear tambien Google Safe Browsing (su respuesta trae `cacheDuration`)
 - Borrar del cache las entradas ya caducadas

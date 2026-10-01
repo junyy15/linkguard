@@ -42,11 +42,13 @@ from collections import defaultdict
 from threading import Lock
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
+from checker import acortador
 from checker.reporte import VERSION_FORMATO, a_diccionario
 from checker.scanner import analizar
-from checker.scoring import evaluar
+from checker.scoring import SEGURO, evaluar
 
 registro = logging.getLogger("url-checker")
 
@@ -165,6 +167,134 @@ def revisar(peticion: Peticion, request: Request) -> dict:
         ) from error
 
     return a_diccionario(analisis, veredicto)
+
+
+# =====================================================================
+#  Acortador
+# =====================================================================
+
+class PeticionAcortar(BaseModel):
+    url: str = Field(..., min_length=1, max_length=LARGO_MAXIMO_URL,
+                     examples=["https://example.com"])
+
+
+@app.post("/acortar", summary="Acorta una URL, si esta limpia")
+def crear_corto(peticion: PeticionAcortar, request: Request) -> dict:
+    """Analiza la URL y, SOLO si sale segura, crea un enlace corto.
+
+    La condicion no se revisa aqui sino dentro de acortador.acortar():
+    asi no se puede saltar llamando desde otro lado.
+    """
+    ip = request.client.host if request.client else "desconocida"
+    if not permitir(ip):
+        raise HTTPException(429, f"Maximo {LIMITE_POR_IP} peticiones por minuto.",
+                            headers={"Retry-After": str(int(VENTANA))})
+
+    try:
+        analisis = analizar(peticion.url)
+        veredicto = evaluar(analisis)
+    except Exception as error:
+        registro.exception("Fallo analizando %s", peticion.url)
+        raise HTTPException(500, "No se pudo completar el analisis.") from error
+
+    # Se acorta la URL FINAL de la cadena, no la que escribieron: es la
+    # que de verdad se reviso, y de paso le quita al enlace corto una
+    # capa de redireccion.
+    destino = analisis.url_final or peticion.url
+
+    try:
+        enlace = acortador.acortar(destino, veredicto.seguridad)
+    except acortador.NoSePuedeAcortar as error:
+        # 409 Conflict: la peticion esta bien formada, pero el estado del
+        # recurso no permite la operacion. No es un 400 (tu peticion esta
+        # mal) ni un 403 (no tienes permiso).
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "motivo": str(error),
+                "veredicto": veredicto.seguridad,
+                "razones": [s.texto for s in veredicto.señales],
+            },
+        ) from error
+
+    base = str(request.base_url).rstrip("/")
+    return {
+        "codigo": enlace.codigo,
+        "corto": f"{base}/r/{enlace.codigo}",
+        "destino": enlace.url,
+        "veredicto": enlace.veredicto,
+        "verificado_en": enlace.verificado,
+    }
+
+
+def _pagina_de_alerta(enlace, veredicto) -> HTMLResponse:
+    """Pagina que se muestra cuando un enlace ya acortado dejo de ser seguro.
+
+    No se redirige. El punto de todo el proyecto es no mandar a nadie a
+    un sitio que acaba de ensuciarse.
+    """
+    razones = "".join(f"<li>{s.texto} <small>({s.fuente})</small></li>"
+                      for s in veredicto.señales)
+    html = f"""<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<title>Enlace bloqueado</title>
+<style>
+ body {{ font-family: system-ui, sans-serif; max-width: 38rem; margin: 4rem auto;
+        padding: 0 1rem; line-height: 1.6; }}
+ .caja {{ border: 2px solid #c00; border-radius: .5rem; padding: 1.5rem; }}
+ h1 {{ color: #c00; margin-top: 0; }}
+ code {{ background: #f4f4f4; padding: .15rem .35rem; border-radius: .2rem;
+        word-break: break-all; }}
+</style></head>
+<body><div class="caja">
+<h1>Enlace bloqueado</h1>
+<p>Este enlace corto estaba limpio cuando se creo, pero al revisarlo
+   ahora el resultado cambio a <strong>{veredicto.seguridad}</strong>.</p>
+<p>Por eso no se te redirige.</p>
+<ul>{razones}</ul>
+<p>Destino: <code>{enlace.url}</code></p>
+<p><small>Revisa el enlace tu mismo antes de abrirlo. Esta herramienta
+   no afirma con certeza que el sitio sea peligroso: reporta lo que
+   encontro en fuentes publicas.</small></p>
+</div></body></html>"""
+    return HTMLResponse(content=html, status_code=403)
+
+
+@app.get("/r/{codigo}", summary="Abre un enlace corto")
+def abrir_corto(codigo: str):
+    """Redirige a la URL guardada, despues de volver a revisarla.
+
+    Lo importante esta en la segunda revision: un sitio limpio hoy puede
+    estar comprometido mañana. Si solo revisaramos al crear el enlace,
+    un atacante podria acortar su sitio limpio, esperar, e infectarlo
+    despues con el enlace corto ya repartido.
+
+    Y fijate de donde sale el destino: de NUESTRO almacen, nunca de un
+    parametro de la URL. Un acortador que acepta '?url=...' es un
+    redirector abierto, y sirve para prestarle tu reputacion a otro.
+    """
+    enlace = acortador.obtener(codigo)
+    if enlace is None:
+        raise HTTPException(404, "Ese enlace corto no existe.")
+
+    if enlace.necesita_revision:
+        try:
+            analisis = analizar(enlace.url)
+            veredicto = evaluar(analisis)
+        except Exception as error:
+            registro.exception("Fallo re-revisando %s", enlace.url)
+            raise HTTPException(500, "No se pudo revisar el destino.") from error
+
+        acortador.actualizar_verificacion(codigo, veredicto.seguridad)
+        if veredicto.seguridad != SEGURO:
+            return _pagina_de_alerta(enlace, veredicto)
+
+    acortador.registrar_uso(codigo)
+    # 307 y no 301: el 301 es permanente y los navegadores lo guardan.
+    # Si lo usaramos, la proxima vez ni siquiera pasarian por aqui, y la
+    # re-revision dejaria de ocurrir. Un acortador que revisa NO puede
+    # usar redirecciones permanentes.
+    return RedirectResponse(enlace.url, status_code=307)
 
 
 # Nota sobre 'def' y no 'async def':

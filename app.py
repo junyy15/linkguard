@@ -33,7 +33,7 @@ lugares a la vez porque hay un solo lugar.
 
 import streamlit as st
 
-from checker import cache, config
+from checker import acortador, cache, config
 from checker.scanner import analizar
 from checker.scoring import (
     POSIBLEMENTE_PELIGROSO,
@@ -43,6 +43,10 @@ from checker.scoring import (
     SOSPECHOSO,
     evaluar,
 )
+
+# Donde vive la API que resuelve los enlaces cortos. Un acortador necesita
+# un servidor HTTP que atienda las redirecciones, y ese es api.py.
+BASE_CORTA = "http://127.0.0.1:8000"
 
 AVISO_GOOGLE = ("Advisory provided by Google — "
                 "[Safe Browsing Advisory]"
@@ -138,6 +142,10 @@ if enviar and url.strip():
         analisis = analizar(url, consultar_amenazas=consultar_amenazas)
         st.session_state["analisis"] = analisis
         st.session_state["veredicto"] = evaluar(analisis)
+        # Se borra el enlace corto anterior: si no, al revisar una URL
+        # nueva seguiria mostrandose el corto de la anterior, que es
+        # justo el tipo de confusion que puede acabar en un clic malo.
+        st.session_state.pop("enlace_corto", None)
 elif enviar:
     st.warning("Escribe un enlace primero.")
 
@@ -182,6 +190,41 @@ if analisis and veredicto:
     if veredicto.cita_a_google:
         st.caption(AVISO_GOOGLE)
         st.caption(MAS_INFORMACION)
+
+    # --- El acortador: la idea con la que empezo el proyecto ---
+    st.divider()
+    if veredicto.seguridad == SEGURO:
+        st.caption("Este enlace salio limpio, asi que se puede acortar.")
+        if st.button("🔗 Generar enlace corto", use_container_width=True):
+            # Se acorta la URL FINAL de la cadena, que es la que de verdad
+            # se reviso, no la que escribio el usuario.
+            destino = analisis.url_final or analisis.validacion.url
+            try:
+                enlace = acortador.acortar(destino, veredicto.seguridad)
+                st.session_state["enlace_corto"] = enlace
+            except acortador.NoSePuedeAcortar as error:
+                st.error(str(error))
+
+        enlace = st.session_state.get("enlace_corto")
+        if enlace:
+            st.code(f"{BASE_CORTA}/r/{enlace.codigo}", language=None)
+            st.caption(
+                f"Apunta a `{enlace.url}` · El enlace **se vuelve a revisar** "
+                f"cada vez que alguien lo abre, si pasó más de una hora desde "
+                f"la última verificación. Si para entonces dejó de estar "
+                f"limpio, no redirige: muestra una alerta."
+            )
+            st.caption(
+                f"⚠️ Solo funciona mientras la API esté corriendo "
+                f"(`.\\api.bat`), en `{BASE_CORTA}`."
+            )
+    else:
+        st.caption(
+            "🔗 **No se puede acortar.** Solo se acortan los enlaces que "
+            "salieron limpios. Ni siquiera los de *sin confirmar*: un enlace "
+            "corto es una recomendación implícita, y no se recomienda lo que "
+            "no se pudo comprobar."
+        )
 
     # --- Detalle tecnico, plegado ---
     with st.expander("Ver detalle técnico"):

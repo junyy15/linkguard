@@ -36,6 +36,9 @@ __pycache__/
 # Cache de respuestas de las APIs
 .cache/
 
+# Enlaces acortados (datos locales, no codigo)
+.enlaces/
+
 # Configuracion local de Streamlit
 .streamlit/secrets.toml
 
