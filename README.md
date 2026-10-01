@@ -1,14 +1,43 @@
-# URL Health & Safety Checker
+# 🛡️ LinkGuard
 
-Herramienta que revisa si un enlace esta roto, es invalido o es peligroso
-(phishing / malware) antes de usarlo o acortarlo.
+**Revisa si un enlace es seguro antes de abrirlo.**
 
-Da un veredicto con sus razones, consultando Google Safe Browsing y
-VirusTotal, y revisando la cadena completa de redirecciones.
+Hecho por Pierre Junior · 2026
 
 ---
 
-## Como usarlo
+## Para usarlo (no necesitas saber programar)
+
+**Doble clic en el icono de LinkGuard en tu escritorio.**
+
+Se abre solo en tu navegador. Pegas el enlace, le das a *Revisar*, y te dice
+una de cinco cosas, en palabras normales:
+
+| | Significa |
+|---|---|
+| ✅ **Se ve bien** | No encontramos nada raro |
+| ❔ **No pudimos revisarlo bien** | No sabemos. No es lo mismo que "seguro" |
+| ⚠️ **Ten cuidado** | Hay cosas que no cuadran |
+| ⛔ **Mejor no lo abras** | Fue reportado como peligroso |
+| 🚫 **Este enlace no sirve** | No es un enlace valido |
+
+Siempre te explica **por que** y **que hacer**.
+
+Mientras lo uses, **no cierres la ventana negra** que se abre: ahi esta
+corriendo el programa. Para apagarlo, cierra esa ventana.
+
+¿Quieres ver los datos tecnicos? Prende **Modo avanzado** en el menu de la
+izquierda.
+
+---
+
+## Lo demas de este README es para programadores
+
+Si solo quieres usar LinkGuard, con lo de arriba basta.
+
+---
+
+## Las otras formas de usarlo
 
 Primero entra a la carpeta:
 
@@ -24,7 +53,8 @@ Luego, cualquiera de estos (los `.bat` no necesitan activar nada):
 | `.\check.bat <url> --json` | Lo mismo, pero en JSON (para otros programas) |
 | `.\check.bat --lista urls-de-prueba.txt` | Revisa muchas URLs, rapido (sin APIs) |
 | `.\check.bat --lista urls-de-prueba.txt --amenazas` | ...consultando tambien las APIs |
-| `.\web.bat` | **La página web.** Se abre sola en http://localhost:8501 |
+| `.\LinkGuard.bat` | **Todo junto:** web + servidor de enlaces cortos. Es lo que hace el acceso directo del escritorio. |
+| `.\web.bat` | Solo la página web, en http://localhost:8501 |
 | `.\api.bat` | Levanta la API en http://127.0.0.1:8000 (docs en `/docs`) |
 | `.\pruebas.bat` | Corre las 135 pruebas automaticas (pytest) |
 | `.\pruebas.bat -m "not red"` | Solo las 116 que no usan internet (1 segundo) |
@@ -66,7 +96,9 @@ Los archivos de la carpeta `checker/` se corren con `-m`:
 |---|---|
 | **`check.py`** | La herramienta. Es el `main` del proyecto. SOLO imprime: quien analiza es `scanner.py`. |
 | **`api.py`** | La API HTTP (FastAPI). `POST /check` devuelve el mismo JSON que `check.py --json`. Trae limitador por IP y documentacion automatica en `/docs`. |
-| **`app.py`** | La interfaz web (Streamlit). Cero logica propia: llama a `analizar()` y `evaluar()` como todo lo demas. |
+| **`app.py`** | La interfaz web (Streamlit). Cero logica propia: llama a `analizar()` y `evaluar()` como todo lo demas. Traduce los veredictos a lenguaje de todos los dias. |
+| **`marca.py`** | El nombre, el autor y el lema, en un solo lugar. Cambialo ahi y cambia en toda la herramienta. |
+| **`LinkGuard.bat`** | El lanzador de un clic: levanta la web y el servidor de enlaces, y apaga los dos al cerrarse. |
 | **`docs/`** | Cuatro diagramas en PlantUML: arquitectura, flujo, criterio del veredicto y modelo de datos. Ver `docs/README.md` para abrirlos. |
 | **`tests/`** | Las pruebas de verdad (pytest). 125 en total; 108 no tocan internet. `conftest.py` tiene las fabricas de datos falsos y las fixtures. |
 | **`probar.py`** | Demo visual del proyecto. Ya no es la autoridad: si se contradice con `tests/`, manda `tests/`. |

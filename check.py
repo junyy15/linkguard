@@ -27,6 +27,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+import marca
 from checker.reporte import a_diccionario
 from checker.scanner import Analisis, analizar
 from checker.scoring import Veredicto, evaluar
@@ -161,6 +162,8 @@ def linea_fuente(resultado: ResultadoAmenazas | None) -> Text | None:
 def mostrar(a: Analisis, v: Veredicto) -> None:
     """Imprime el resultado completo de una URL."""
     console.print()
+    console.print(f"[bold]{marca.EMOJI} {marca.NOMBRE}[/bold] "
+                  f"[dim]· {marca.LEMA}[/dim]")
     console.print(Text(a.entrada, style="bold cyan"))
     console.print(panel_veredicto(v))
 

@@ -45,6 +45,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
+import marca
 from checker import acortador
 from checker.reporte import VERSION_FORMATO, a_diccionario
 from checker.scanner import analizar
@@ -63,10 +64,10 @@ VENTANA = 60.0
 LARGO_MAXIMO_URL = 2048
 
 app = FastAPI(
-    title="URL Health & Safety Checker",
-    description="Revisa si un enlace esta roto, es invalido o fue reportado "
-                "como peligroso. Proyecto educativo, uso no comercial.",
-    version=f"1.0 (formato {VERSION_FORMATO})",
+    title=marca.NOMBRE,
+    description=f"{marca.DESCRIPCION_LARGA}\n\n"
+                f"Hecho por {marca.AUTOR}. Proyecto educativo, uso no comercial.",
+    version=f"{marca.VERSION} (formato {VERSION_FORMATO})",
 )
 
 
@@ -127,7 +128,8 @@ class Peticion(BaseModel):
 def raiz() -> dict:
     """Sirve para comprobar que el servicio esta vivo."""
     return {
-        "servicio": "URL Health & Safety Checker",
+        "servicio": marca.NOMBRE,
+        "autor": marca.AUTOR,
         "version_formato": VERSION_FORMATO,
         "documentacion": "/docs",
         "uso": "POST /check con {\"url\": \"https://...\"}",
