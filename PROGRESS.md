@@ -5,7 +5,9 @@
 
 ## Estado actual
 
-**LAS CUATRO SEMANAS, TERMINADAS. 135 pruebas, todas en verde.**
+**LAS CUATRO SEMANAS, TERMINADAS. 150 pruebas, todas en verde.**
+**+ Repositorio git inicializado.**
+**+ DNS rebinding tapado (ver "Mejoras despues del plan").**
 
 La herramienta tiene cuatro formas de usarse:
   terminal · JSON por tuberia · API HTTP · pagina web
@@ -362,3 +364,74 @@ COMPLETO, de arriba a abajo. Por eso:
 | Estructura del resultado | Dos ejes separados: Salud y Seguridad | Un enlace puede estar roto pero ser seguro, o funcionar y ser malicioso |
 | Secretos | `.env` + `python-dotenv`, fuera de OneDrive | La carpeta es de la cuenta escolar um.edu.mx |
 | Licencias de API | GSB y VirusTotal gratis = solo uso NO comercial | Si algun dia se vende, hay que pasar a Google Web Risk |
+
+---
+
+# MEJORAS DESPUES DEL PLAN
+
+## Git (1 de octubre de 2026)
+
+- Repositorio inicializado, rama `main`, primer commit con 44 archivos.
+- `.gitignore` reescrito por secciones, con los secretos hasta arriba.
+- `.gitattributes` para normalizar los finales de linea.
+- Verificado que `.env`, `.venv` y `.cache` NO estan rastreados.
+- Identidad configurada SOLO para este repositorio, no global.
+- Pendiente: el repo vive dentro de OneDrive, que sincroniza tambien la
+  carpeta `.git` y puede corromper el historial si sincroniza a media
+  operacion. El arreglo real es subirlo a GitHub o sacarlo de OneDrive.
+
+## DNS rebinding tapado (1 de octubre de 2026)
+
+### El hueco
+
+Habia DOS resoluciones de DNS para una misma peticion:
+
+    1. validator.py resuelve  ->  "93.184.216.34, publica, OK"
+    2. httpx resuelve OTRA VEZ al conectarse  ->  127.0.0.1
+
+Un atacante con su propio servidor DNS y TTL 0 puede contestar distinto
+cada vez. La validacion aprueba y la conexion acaba en tu maquina. Es el
+bypass clasico de los filtros anti-SSRF. En la terminal casi no importa;
+en `api.py` expuesto por HTTP, era LA vulnerabilidad del proyecto.
+
+### El arreglo: `fijar_destino()` en `checker/health.py`
+
+- Resuelve el DNS UNA sola vez y valida todas las IPs.
+- La peticion va a la IP ya validada, no al nombre.
+- El encabezado `Host` lleva el nombre original (si no, el servidor no
+  sabe que sitio le estas pidiendo).
+- La extension `sni_hostname` lleva el nombre original, para que el
+  certificado TLS se verifique contra el NOMBRE y no contra la IP.
+  Sin eso habriamos cambiado un agujero por otro peor. Tres pruebas de
+  red lo vigilan (expired / self-signed / wrong.host de badssl.com).
+- Las IPs se prueban en orden, IPv4 primero: muchas maquinas tienen
+  IPv6 configurado pero sin salida real.
+
+### De paso, dos cosas mas
+
+- **Nunca se descarga el cuerpo.** Todas las peticiones usan
+  `cliente.stream()`: encabezados, codigo, y se cierra. Antes, el GET de
+  respaldo bajaba la pagina entera a memoria y un servidor malicioso
+  podia mandar gigabytes.
+- **Tope de tiempo para la cadena completa** (20 s). Antes, 10 saltos de
+  5 segundos eran 50 segundos colgados.
+
+### Pruebas nuevas: `tests/test_ssrf.py`, 15 casos
+
+La mas importante simula el ataque: un DNS que contesta publica la
+primera vez e interna la segunda. Comprueba que solo hay UNA consulta y
+que la peticion sale hacia la IP publica.
+
+Sutileza: `ClienteFalso` solo implementa `stream()`. Si alguien volviera
+a usar `get()` o `head()`, las pruebas revientan. Asi tambien se vigila
+que nunca se descargue el cuerpo.
+
+## Lo que sigue pendiente
+
+- Boton de "acortar enlace" para enlaces seguros (la idea original)
+- Fuga de memoria en el limitador de `api.py`: las IPs nunca se borran
+- Cachear tambien Google Safe Browsing (su respuesta trae `cacheDuration`)
+- Borrar del cache las entradas ya caducadas
+- Lista de marcas mas grande para el typosquatting
+- Public Suffix List en vez de la lista corta de sufijos
+- Recortar `probar.py` para que solo muestre y no verifique

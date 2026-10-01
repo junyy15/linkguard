@@ -6,29 +6,81 @@ y anota que contesta.
 
 Decisiones importantes:
   - follow_redirects=False: NO dejamos que la libreria siga los redirects sola.
-    Manana los seguimos nosotros, revisando el anti-SSRF en cada salto.
+    Los seguimos nosotros, revisando el anti-SSRF en cada salto.
   - verify=True: verificamos el certificado TLS. Si esta mal, lo REPORTAMOS.
     Nunca se apaga la verificacion para "que funcione".
-  - HEAD primero: pide solo los encabezados, no la pagina. Mas rapido y no
-    descargamos contenido de un sitio que todavia no sabemos si es seguro.
+  - HEAD primero: pide solo los encabezados, no la pagina.
+  - Nunca se descarga el cuerpo de la respuesta (ver abajo).
+  - La IP se fija antes de conectar (ver abajo).
+
+=====================================================================
+ DNS REBINDING: por que no basta con validar antes
+=====================================================================
+
+El diseño original tenia un hueco. El orden era:
+
+    1. validator.py resuelve el DNS  ->  "93.184.216.34, publica, OK"
+    2. httpx resuelve el DNS OTRA VEZ al conectarse  ->  127.0.0.1
+
+Son DOS resoluciones distintas. Un atacante que controle su propio
+servidor DNS puede contestar una IP publica en la primera y 127.0.0.1
+en la segunda (con TTL 0 el sistema no guarda la respuesta vieja).
+La validacion aprueba, y la conexion termina en tu maquina.
+
+Se llama DNS rebinding, y es el bypass clasico de los filtros anti-SSRF.
+En la terminal casi no importa, porque las URLs las eliges tu. En api.py
+expuesto por HTTP, es LA vulnerabilidad.
+
+El arreglo es resolver UNA SOLA VEZ y conectarse a esa IP, no al nombre:
+
+    - La URL de la peticion lleva la IP ya validada.
+    - El encabezado Host lleva el nombre original (si no, el servidor no
+      sabe que sitio le estas pidiendo).
+    - La extension sni_hostname lleva el nombre original, para que el
+      certificado TLS se siga verificando contra el nombre y no contra
+      la IP. Esto es lo que impide que el arreglo debilite el HTTPS:
+      un certificado que no corresponda al nombre se sigue rechazando.
+
+=====================================================================
+ NUNCA SE DESCARGA EL CUERPO
+=====================================================================
+
+Antes, cuando el HEAD fallaba y caiamos al GET, httpx descargaba la
+pagina entera en memoria. Un servidor malicioso podia mandar gigabytes.
+Ahora todas las peticiones usan cliente.stream(): se leen los
+encabezados, se toma el codigo y se cierra la conexion sin leer una
+sola linea del cuerpo. No lo necesitamos para nada.
 """
 
+import socket
 import ssl
 import time
 from dataclasses import dataclass, field
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 
-from checker.validator import validar_url
+from checker.validator import ip_es_interna, resolver_dominio, validar_url
 
 # Cuanto esperamos antes de rendirnos. Un programa que espera para siempre
 # es un programa roto.
 TIEMPO_LIMITE = 5.0
 
+# Tope para la cadena COMPLETA. Sin esto, 10 saltos de 5 segundos son 50
+# segundos: una peticion a la API colgada casi un minuto.
+TIEMPO_TOTAL = 20.0
+
 # Quien decimos ser. Es de buena educacion identificarse, y ademas algunos
 # sitios bloquean a quien no manda User-Agent.
 AGENTE = "URL-Health-Checker/0.1 (proyecto educativo)"
+
+
+class DestinoNoPermitido(Exception):
+    """La URL resolvio a una direccion interna."""
+
+
+class DestinoNoResoluble(Exception):
+    """El DNS no supo contestar por ese dominio."""
 
 
 @dataclass
@@ -95,17 +147,103 @@ def es_error_de_certificado(error: Exception) -> bool:
     return "SSL" in texto or "CERTIFICATE" in texto
 
 
+def ordenar_ips(ips: list[str]) -> list[str]:
+    """IPv4 primero, IPv6 despues.
+
+    Importa: muchas computadoras tienen IPv6 configurado pero sin salida
+    real. Si eligieramos la IPv6 primero, fallarian sitios que antes
+    funcionaban. Se intentan en este orden hasta que una conecte.
+    """
+    return [ip for ip in ips if ":" not in ip] + [ip for ip in ips if ":" in ip]
+
+
+def fijar_destino(url: str) -> tuple[list[str], str, dict[str, str], dict[str, str]]:
+    """Resuelve el DNS UNA vez, valida las IPs y prepara la peticion.
+
+    Devuelve (ips validadas, plantilla de url, cabeceras, extensiones).
+    La plantilla lleva '{ip}' donde va la direccion, para poder probar
+    varias sin volver a resolver nada.
+
+    Lanza DestinoNoPermitido si alguna IP es interna, y DestinoNoResoluble
+    si el DNS no contesta.
+    """
+    partes = urlparse(url)
+    host = partes.hostname
+    if not host:
+        raise DestinoNoPermitido("La URL no tiene dominio")
+
+    es_https = partes.scheme.lower() == "https"
+    puerto = partes.port or (443 if es_https else 80)
+
+    try:
+        ips = resolver_dominio(host)
+    except (socket.gaierror, UnicodeError, ValueError) as error:
+        raise DestinoNoResoluble(f"El DNS no resolvio '{host}'") from error
+
+    if not ips:
+        raise DestinoNoResoluble(f"El DNS no devolvio ninguna IP para '{host}'")
+
+    # Basta con que UNA sea interna para desconfiar de todo el dominio.
+    internas = [ip for ip in ips if ip_es_interna(ip)]
+    if internas:
+        raise DestinoNoPermitido(
+            f"Apunta a una direccion interna ({', '.join(internas)})")
+
+    # La plantilla con {ip} en el lugar de la direccion.
+    plantilla = urlunparse(partes._replace(netloc="{ip}:" + str(puerto)))
+
+    # El Host lleva el puerto solo si no es el estandar del esquema.
+    host_cabecera = host if puerto in (80, 443) else f"{host}:{puerto}"
+
+    return (
+        ordenar_ips(ips),
+        plantilla,
+        {"Host": host_cabecera},
+        # sni_hostname hace que el certificado se verifique contra el
+        # NOMBRE y no contra la IP. Sin esto, fijar la IP romperia HTTPS.
+        {"sni_hostname": host},
+    )
+
+
+def _direccion(ip: str) -> str:
+    """Las IPv6 van entre corchetes dentro de una URL."""
+    return f"[{ip}]" if ":" in ip else ip
+
+
 def revisar_salud(url: str, tiempo_limite: float = TIEMPO_LIMITE) -> Salud:
     """Hace UNA peticion al sitio y reporta como le fue.
 
     No sigue redirects: si el sitio contesta 301, lo anotamos y ya.
-    Seguir la cadena es el trabajo del Dia 4.
+    Seguir la cadena es trabajo de seguir_cadena().
     """
     inicio = time.perf_counter()
 
     def transcurrido() -> int:
         """Milisegundos desde que empezamos. Se calcula igual si hubo error."""
         return int((time.perf_counter() - inicio) * 1000)
+
+    # --- Resolver y validar ANTES de conectarse ---
+    try:
+        ips, plantilla, cabeceras, extensiones = fijar_destino(url)
+    except DestinoNoPermitido as error:
+        return Salud(categoria="ERROR", razon=str(error),
+                     tiempo_ms=transcurrido(), tipo_error="ssrf")
+    except DestinoNoResoluble as error:
+        return Salud(categoria="ERROR", razon=str(error),
+                     tiempo_ms=transcurrido(), tipo_error="dns")
+
+    def pedir(cliente: httpx.Client, metodo: str, destino: str):
+        """Hace la peticion SIN descargar el cuerpo.
+
+        stream() entrega los encabezados y deja el cuerpo sin leer; al
+        salir del with, la conexion se cierra. Nunca llega a memoria ni
+        un byte de la pagina.
+        """
+        with cliente.stream(metodo, destino, headers=cabeceras,
+                            extensions=extensiones) as respuesta:
+            return respuesta.status_code, dict(respuesta.headers)
+
+    ultimo_error: Exception | None = None
 
     try:
         with httpx.Client(
@@ -114,15 +252,28 @@ def revisar_salud(url: str, tiempo_limite: float = TIEMPO_LIMITE) -> Salud:
             headers={"User-Agent": AGENTE},
             verify=True,
         ) as cliente:
-            # HEAD pide solo los encabezados, no la pagina completa.
-            respuesta = cliente.head(url)
-            metodo = "HEAD"
+            # Se prueban las IPs en orden hasta que una conecte.
+            for ip in ips:
+                destino = plantilla.format(ip=_direccion(ip))
+                try:
+                    codigo, cabeceras_respuesta = pedir(cliente, "HEAD", destino)
+                    metodo = "HEAD"
 
-            # Muchos servidores manejan mal el HEAD y contestan 403, 405 o 501
-            # aunque la pagina exista. En ese caso reintentamos con GET.
-            if respuesta.status_code in (403, 405, 501):
-                respuesta = cliente.get(url)
-                metodo = "GET"
+                    # Muchos servidores manejan mal el HEAD y contestan 403,
+                    # 405 o 501 aunque la pagina exista. Reintentamos con GET.
+                    if codigo in (403, 405, 501):
+                        codigo, cabeceras_respuesta = pedir(cliente, "GET", destino)
+                        metodo = "GET"
+                    break
+                except httpx.ConnectError as error:
+                    # Si es un problema de certificado no tiene caso probar
+                    # otra IP: el certificado seria el mismo.
+                    if es_error_de_certificado(error):
+                        raise
+                    ultimo_error = error
+            else:
+                # Ninguna IP conecto.
+                raise ultimo_error or httpx.ConnectError("sin IPs utilizables")
 
     except httpx.TimeoutException:
         return Salud(
@@ -160,14 +311,16 @@ def revisar_salud(url: str, tiempo_limite: float = TIEMPO_LIMITE) -> Salud:
             tipo_error="red",
         )
 
-    categoria, razon = clasificar(respuesta.status_code)
+    categoria, razon = clasificar(codigo)
 
     # Si es un redirect, el servidor dice a donde en el encabezado "Location".
-    destino = respuesta.headers.get("location") if categoria == "REDIRECCION" else None
+    # Las cabeceras de httpx no distinguen mayusculas; el dict() si, asi que
+    # se busca en minusculas, que es como las entrega.
+    destino = cabeceras_respuesta.get("location") if categoria == "REDIRECCION" else None
 
     return Salud(
         categoria=categoria,
-        codigo=respuesta.status_code,
+        codigo=codigo,
         razon=razon,
         tiempo_ms=transcurrido(),
         destino=destino,
@@ -219,19 +372,35 @@ def dominio_de(url: str) -> str:
         return ""
 
 
-def seguir_cadena(url: str, max_saltos: int = MAX_SALTOS) -> Cadena:
+def seguir_cadena(url: str, max_saltos: int = MAX_SALTOS,
+                  tiempo_total: float = TIEMPO_TOTAL) -> Cadena:
     """Sigue las redirecciones una por una hasta llegar al destino final.
 
     En CADA salto volvemos a validar la URL. Ese es el punto de todo esto:
     una cadena puede empezar en un dominio publico e inocente y terminar
     apuntando a 127.0.0.1. Validar solo la primera URL no sirve de nada.
+
+    tiempo_total es el tope para TODA la cadena. Sin el, 10 saltos de 5
+    segundos son 50 segundos: una peticion a la API colgada casi un minuto,
+    y una forma facil de tumbar el servidor con unas pocas URLs lentas.
     """
     cadena = Cadena()
     actual = url
     ya_visitadas: set[str] = set()
+    fin = time.monotonic() + tiempo_total
 
     for numero in range(1, max_saltos + 1):
-        salud = revisar_salud(actual)
+        # A cada salto se le da lo que quede del presupuesto total, nunca
+        # mas de lo que le toca por si solo.
+        restante = fin - time.monotonic()
+        if restante <= 0:
+            cadena.url_final = actual
+            cadena.salud_final = None
+            cadena.problema = (f"La cadena tardo mas de {tiempo_total:g} segundos "
+                               f"en total y se corto")
+            break
+
+        salud = revisar_salud(actual, tiempo_limite=min(TIEMPO_LIMITE, restante))
         salto = Salto(numero=numero, url=actual, codigo=salud.codigo)
         cadena.saltos.append(salto)
         ya_visitadas.add(actual)
