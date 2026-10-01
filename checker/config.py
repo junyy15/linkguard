@@ -22,6 +22,17 @@ from dotenv import load_dotenv
 # Path.home() es tu carpeta de usuario, sin importar como se llame.
 RUTA_SECRETA = Path.home() / ".secrets" / "url-checker.env"
 
+# Nombre de la variable que enciende el MODO PUBLICO.
+#
+# En tu computadora no existe, asi que la herramienta funciona completa.
+# En un servidor (Streamlit Cloud) se pone en "1", y entonces:
+#   - no se consulta VirusTotal (su cuota es de 500 al dia y la gastarian
+#     desconocidos en una tarde)
+#   - se esconde el acortador (sus enlaces los resuelve api.py, que en el
+#     servidor no existe: darian enlaces rotos)
+#   - no se muestra el estado de las llaves
+VARIABLE_PUBLICO = "LINKGUARD_PUBLICO"
+
 # El .env del proyecto, solo como plan B.
 RUTA_PROYECTO = Path(__file__).resolve().parent.parent / ".env"
 
@@ -52,15 +63,47 @@ def cargar() -> None:
     _ya_cargado = True
 
 
+def _de_streamlit(nombre: str) -> str | None:
+    """Busca la llave en los secretos de Streamlit Cloud.
+
+    Cuando la herramienta corre en un servidor no hay archivos .env: las
+    llaves se escriben en el panel de Streamlit y llegan por st.secrets.
+
+    El import va aqui dentro a proposito. Si estuviera arriba, check.py y
+    api.py cargarian Streamlit entero sin necesitarlo para nada.
+    """
+    try:
+        import streamlit as st
+
+        return str(st.secrets[nombre]).strip() or None
+    except Exception:
+        # Si no hay Streamlit, o no hay secretos, o no esta esa llave:
+        # no es un error, simplemente no es por ahi.
+        return None
+
+
 def obtener(nombre: str) -> str | None:
     """Devuelve el valor de una llave, o None si no esta configurada.
+
+    Busca en este orden:
+      1. El entorno (incluye lo que cargaron los archivos .env)
+      2. Los secretos de Streamlit Cloud
 
     Una llave vacia cuenta como no configurada: asi el archivo de plantilla
     con 'VIRUSTOTAL_API_KEY=' no se confunde con una llave de verdad.
     """
     cargar()
     valor = os.environ.get(nombre, "").strip()
-    return valor or None
+    return valor or _de_streamlit(nombre)
+
+
+def es_publico() -> bool:
+    """¿Estamos corriendo como servicio publico?"""
+    cargar()
+    valor = os.environ.get(VARIABLE_PUBLICO, "").strip().lower()
+    if valor in ("1", "true", "si", "yes"):
+        return True
+    return (_de_streamlit(VARIABLE_PUBLICO) or "").lower() in ("1", "true", "si", "yes")
 
 
 def estado() -> dict[str, tuple[bool, str]]:

@@ -15,8 +15,9 @@ solo sirve para un lugar.
 
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from checker import config
 from checker.health import Cadena, seguir_cadena
 from checker.threats import (
     ResultadoAmenazas,
@@ -36,6 +37,16 @@ class Analisis:
     google: ResultadoAmenazas | None = None
     virustotal: ResultadoAmenazas | None = None
     tiempo_ms: int = 0
+
+    # Fuentes que NO se consultaron a proposito, por configuracion.
+    #
+    # Hay que distinguirlas de las que fallaron. "No pudimos preguntar" es
+    # ignorancia y obliga a decir SIN_CONFIRMAR. "Decidimos no preguntar"
+    # es una decision del operador: si la otra fuente si contesto, el
+    # resultado sigue valiendo. Sin esta distincion, apagar VirusTotal
+    # haria que TODO saliera como SIN_CONFIRMAR, y la herramienta publica
+    # no serviria para nada.
+    omitidas: list[str] = field(default_factory=list)
 
     @property
     def paso_validacion(self) -> bool:
@@ -62,7 +73,8 @@ class Analisis:
         return pistas
 
 
-def analizar(entrada: str, consultar_amenazas: bool = True) -> Analisis:
+def analizar(entrada: str, consultar_amenazas: bool = True,
+             usar_virustotal: bool | None = None) -> Analisis:
     """Analiza una URL de principio a fin.
 
     Orden de las cosas:
@@ -86,7 +98,14 @@ def analizar(entrada: str, consultar_amenazas: bool = True) -> Analisis:
 
     cadena = seguir_cadena(validacion.url)
 
+    # Si no se dice nada, VirusTotal se usa salvo en modo publico, donde
+    # su cuota de 500 al dia la gastarian desconocidos en una tarde.
+    if usar_virustotal is None:
+        usar_virustotal = not config.es_publico()
+
     google = virustotal = None
+    omitidas: list[str] = []
+
     if consultar_amenazas:
         # Dos hilos, dos peticiones al mismo tiempo. No usamos asyncio
         # porque para dos llamadas no compensa reescribir todo el proyecto.
@@ -95,12 +114,16 @@ def analizar(entrada: str, consultar_amenazas: bool = True) -> Analisis:
             tarea_google = pool.submit(
                 consultar_safe_browsing, [validacion.url, cadena.url_final])
             # A VirusTotal solo por la final: cada peticion cuesta cuota.
-            tarea_vt = pool.submit(consultar_virustotal, cadena.url_final)
+            tarea_vt = (pool.submit(consultar_virustotal, cadena.url_final)
+                        if usar_virustotal else None)
 
             # .result() espera a que termine y devuelve lo que salio.
             # Si la funcion lanzo una excepcion, aqui vuelve a lanzarse.
             google = tarea_google.result()
-            virustotal = tarea_vt.result()
+            if tarea_vt is not None:
+                virustotal = tarea_vt.result()
+            else:
+                omitidas.append("VirusTotal")
 
     return Analisis(
         entrada=entrada,
@@ -108,6 +131,7 @@ def analizar(entrada: str, consultar_amenazas: bool = True) -> Analisis:
         cadena=cadena,
         google=google,
         virustotal=virustotal,
+        omitidas=omitidas,
         tiempo_ms=int((time.perf_counter() - inicio) * 1000),
     )
 

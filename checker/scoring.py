@@ -179,23 +179,45 @@ def evaluar(analisis: Analisis) -> Veredicto:
                 "VirusTotal", peso=1))
 
     # --- Fuentes de las que no sabemos nada ---
-    # Hay DOS formas de no saber, y las dos cuentan igual:
-    #   - la fuente fallo (consultado=False)
-    #   - la fuente ni se consulto (es None, porque se pidio sin amenazas)
-    # Tratar la segunda como "todo bien" fue un error real de este modulo:
-    # el modo lista decia "seguro" sin haberle preguntado a nadie.
     #
-    # No suman puntos: la ignorancia no es evidencia de culpa. Pero impiden
-    # decir "seguro", porque sencillamente no lo sabemos.
+    # Hay TRES situaciones distintas, y conviene no confundirlas:
+    #
+    #   a) La fuente contesto.                  -> sabemos
+    #   b) La fuente fallo (consultado=False).  -> NO sabemos
+    #   c) La fuente se omitio a proposito.     -> decision del operador
+    #
+    # (b) impide decir "seguro": no preguntar no es estar limpio. Ese fue
+    # un error real de este modulo: el modo lista decia "seguro" sin
+    # haberle preguntado a nadie.
+    #
+    # (c) es distinto. Si el operador decidio correr con una sola fuente
+    # (por ejemplo en la version publica, donde VirusTotal se apaga para
+    # que su cuota no la gasten desconocidos) y esa fuente SI contesto,
+    # el resultado sigue valiendo. Se anota, pero no degrada el veredicto.
+    #
+    # Lo que no se negocia: tiene que haber contestado AL MENOS UNA.
+    omitidas = set(getattr(analisis, "omitidas", []))
     desconocidas: list[str] = []
+    contestaron = 0
+
     for nombre, fuente in (("Google Safe Browsing", google), ("VirusTotal", vt)):
-        if fuente is None:
+        if fuente is not None and fuente.consultado:
+            contestaron += 1
+        elif nombre in omitidas:
+            señales.append(Señal(
+                f"No se consulto {nombre} (apagado en esta version)", nombre))
+        elif fuente is None:
             desconocidas.append(nombre)
             señales.append(Señal(f"No se consulto {nombre}", nombre))
-        elif not fuente.consultado:
+        else:
             desconocidas.append(nombre)
             señales.append(Señal(
                 f"No se pudo consultar {nombre} ({fuente.error})", nombre))
+
+    # Si ninguna fuente contesto, no sabemos nada de amenazas, aunque la
+    # ausencia haya sido a proposito.
+    if contestaron == 0:
+        desconocidas.append("ninguna fuente contesto")
 
     # --- Puntos por la forma del enlace ---
     if cadena:

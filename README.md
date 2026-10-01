@@ -37,6 +37,41 @@ Si solo quieres usar LinkGuard, con lo de arriba basta.
 
 ---
 
+## Instalarlo en otra computadora
+
+```
+git clone https://github.com/TU-USUARIO/linkguard.git
+cd linkguard
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Hacen falta dos llaves gratuitas, que se consiguen en 15 minutos:
+
+- **Google Safe Browsing** — busca *"Safe Browsing API get started"*,
+  crea un proyecto en Google Cloud, habilita la API y crea una clave.
+- **VirusTotal** — registrate en virustotal.com, la llave esta en tu perfil.
+
+Se guardan en `C:\Users\<tu usuario>\.secrets\url-checker.env`
+(fuera del proyecto, para que nunca acaben en git):
+
+```
+GOOGLE_SAFE_BROWSING_API_KEY=tu-llave
+VIRUSTOTAL_API_KEY=tu-llave
+```
+
+Comprueba con `.\llaves.bat`.
+
+## Publicarlo en internet
+
+Ver [PUBLICAR.md](PUBLICAR.md). La version publica se ajusta sola con la
+variable `LINKGUARD_PUBLICO=1`: apaga VirusTotal (su cuota gratuita es de
+500 al dia), esconde el acortador, oculta el estado de las llaves, limita
+las revisiones por visitante y muestra un aviso de privacidad.
+
+---
+
 ## Las otras formas de usarlo
 
 Primero entra a la carpeta:

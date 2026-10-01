@@ -39,6 +39,15 @@ from checker.scoring import (
 # Donde vive la API que resuelve los enlaces cortos.
 BASE_CORTA = "http://127.0.0.1:8000"
 
+# ¿Esto corre en un servidor publico o en la computadora del dueño?
+# Lo decide la variable LINKGUARD_PUBLICO (ver checker/config.py).
+PUBLICO = config.es_publico()
+
+# En publico, cuantas revisiones se permiten por visitante y por hora.
+# No es una defensa fuerte -quien quiera se puede saltar esto- pero evita
+# que una pestaña olvidada o un script torpe gasten la cuota de todos.
+LIMITE_POR_VISITA = 20
+
 AVISO_GOOGLE = ("Advisory provided by Google — "
                 "[Safe Browsing Advisory]"
                 "(https://transparencyreport.google.com/safe-browsing/search)")
@@ -151,11 +160,14 @@ with st.sidebar:
     consultar_amenazas = st.toggle(
         "Consultar listas de peligro",
         value=True,
-        help="Google Safe Browsing y VirusTotal. Apagarlo es más rápido, "
-             "pero entonces no se puede decir que un enlace esté limpio.",
+        help="Apagarlo es más rápido, pero entonces no se puede decir que "
+             "un enlace esté limpio.",
     )
 
-    if avanzado:
+    # El estado de las llaves y el boton de vaciar cache son cosas del
+    # dueño, no del visitante. En publico no se muestran: decirle a un
+    # desconocido como esta configurado tu servidor nunca ayuda.
+    if avanzado and not PUBLICO:
         st.divider()
         st.caption("**Llaves de API**")
         for nombre, (listo, mensaje) in config.estado().items():
@@ -188,11 +200,22 @@ with st.form("formulario"):
                                    use_container_width=True)
 
 if enviar and url.strip():
-    with st.spinner("Revisando el enlace…"):
-        analisis = analizar(url, consultar_amenazas=consultar_amenazas)
-        st.session_state["analisis"] = analisis
-        st.session_state["veredicto"] = evaluar(analisis)
-        st.session_state.pop("enlace_corto", None)
+    # Tope por visitante, solo en la version publica.
+    revisiones = st.session_state.get("revisiones", 0)
+    if PUBLICO and revisiones >= LIMITE_POR_VISITA:
+        st.error(
+            f"Llegaste al límite de {LIMITE_POR_VISITA} revisiones por "
+            f"visita. LinkGuard usa cuotas gratuitas y compartidas; "
+            f"vuelve más tarde o instálalo en tu computadora "
+            f"(el código es libre)."
+        )
+    else:
+        with st.spinner("Revisando el enlace…"):
+            analisis = analizar(url, consultar_amenazas=consultar_amenazas)
+            st.session_state["analisis"] = analisis
+            st.session_state["veredicto"] = evaluar(analisis)
+            st.session_state["revisiones"] = revisiones + 1
+            st.session_state.pop("enlace_corto", None)
 elif enviar:
     st.warning("Primero pega un enlace.")
 
@@ -231,9 +254,13 @@ if analisis and veredicto:
         st.caption(AVISO_GOOGLE)
         st.caption(MAS_INFORMACION)
 
-    # --- Acortar: solo si salio limpio ---
+    # --- Acortar: solo si salio limpio, y solo en la version local ---
+    # En el servidor publico no existe api.py, que es quien resuelve los
+    # enlaces cortos. Ofrecer el boton ahi seria repartir enlaces rotos.
     st.divider()
-    if veredicto.seguridad == SEGURO:
+    if PUBLICO:
+        pass
+    elif veredicto.seguridad == SEGURO:
         st.markdown("**¿Quieres compartirlo?**")
         st.caption("Como este enlace salió limpio, puedes generar una "
                    "versión corta que se vuelve a revisar sola cada vez "
@@ -309,4 +336,25 @@ st.caption(
     "públicas y la forma del enlace, y te dice lo que encuentra. "
     "Que salga limpio no es un certificado de seguridad."
 )
+
+if PUBLICO:
+    # Decirle a la gente que pasa con lo que escribe no es un tramite
+    # legal: es lo minimo. Nadie deberia tener que adivinarlo.
+    with st.expander("Privacidad y límites de esta versión"):
+        st.markdown(
+            "- **Los enlaces que pegas se envían** a Google Safe Browsing "
+            "para revisarlos, y se guardan temporalmente en el servidor "
+            "para no repetir consultas. No pegues enlaces que contengan "
+            "información privada (por ejemplo, con tu sesión o tus datos "
+            "dentro de la dirección).\n"
+            "- **El servidor visita el enlace** para ver si funciona y a "
+            "dónde lleva. No descarga ni guarda el contenido de la página.\n"
+            "- No se usan cookies de seguimiento ni se piden datos tuyos.\n"
+            f"- Esta versión pública usa **solo Google Safe Browsing** y "
+            f"permite **{LIMITE_POR_VISITA} revisiones por visita**, porque "
+            "funciona con cuotas gratuitas y compartidas.\n"
+            "- Si quieres la versión completa (con VirusTotal y el "
+            "acortador), instálala en tu computadora: el código es libre."
+        )
+
 st.caption(marca.CREDITO)

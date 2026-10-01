@@ -3,6 +3,9 @@ httpx
 python-dotenv
 rich
 
+# La pagina web (app.py). Tambien es lo que instala Streamlit Cloud.
+streamlit
+
 # La API HTTP (api.py). Si solo vas a usar check.py, no hacen falta.
 fastapi
 uvicorn
